@@ -1,7 +1,7 @@
 import type { JevAnswer, JevQuestions, JevResponse, JevState } from './types.js';
 
-export const SYSTEM_ONE_URL = 'https://api.typesafe.ai/v1/systemone';
-export const DEFAULT_MODEL = 'jev-latest';
+export const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
+export const DEFAULT_MODEL = '~typesafe/jev-latest';
 
 export interface JevRequest {
   url: string;
@@ -21,7 +21,7 @@ export function buildJevRequest(
   questions: JevQuestions,
 ): JevRequest {
   return {
-    url: params.baseUrl ?? SYSTEM_ONE_URL,
+    url: params.baseUrl ?? DECISIONS_URL,
     method: 'POST',
     headers: {
       authorization: `Bearer ${params.apiKey}`,

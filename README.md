@@ -1,9 +1,23 @@
-# fast-jev-compaction
+# claude-compact-openrouter
 
-Claude Code plugin that replaces the compaction summary with Jev decisions:
-every tool call and result is scored in one fast request, stale ones are
-dropped or truncated, everything kept stays verbatim. Also usable as an npm
-library.
+Claude Code plugin that replaces the compaction summary with Jev decisions,
+with Jev served through **OpenRouter**: every tool call and result is scored in
+one fast request, stale ones are dropped or truncated, everything kept stays
+verbatim. Also usable as an npm library.
+
+Fork of [tamaratran/fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction)
+(MIT). The only functional change is the transport: instead of TypeSafe's own
+API it calls OpenRouter's decisions endpoint, so a single `OPENROUTER_API_KEY`
+and an OpenRouter balance are all you need. No other model is involved — the
+compaction decisions are Jev's.
+
+## Why OpenRouter
+
+Jev (`~typesafe/jev-latest`) is listed on OpenRouter as a *decisions* model:
+`POST https://openrouter.ai/api/alpha/decisions`, $0.042 per million input
+tokens, $0 output, 32k context. The request and response shape is the same
+`{ model, state, questions }` → `{ answers }` that TypeSafe's System One API
+uses, so the whole scoring logic of the original project is untouched.
 
 ## What and why
 
@@ -41,8 +55,8 @@ built-in compaction summary with the original messages.
    **result** stay verbatim (its contents are still needed and re-running the
    tool would not do).
 5. Questions are split into as many requests as needed so state plus questions
-   stays under `maxRequestTokens` (30k by default, under Jev's 32k request
-   limit). The same full state is resent with every request; requests run
+   stays under `maxRequestTokens` (30k by default, under Jev's 32k context).
+   The same full state is resent with every request; requests run
    concurrently and their answers are merged.
 6. Decisions per call, against `keepThreshold`:
    - `keepResult ≥ threshold` → keep call and result;
@@ -56,15 +70,51 @@ built-in compaction summary with the original messages.
 Jev failures, malformed answers, a missing key, or a history that cannot be
 fitted throw; the caller (or the Claude Code hook) decides what to fall back to.
 
-## Install and usage
+## Install in Claude Code
+
+Function hooks are an early-access Claude Code feature (2.1.274+), so the
+opt-in flag must be set wherever Claude Code runs, e.g. in `~/.claude/settings.json`:
+
+```json
+{ "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1", "OPENROUTER_API_KEY": "sk-or-v1-..." } }
+```
+
+Create the key at <https://openrouter.ai/settings/keys> and top up the
+OpenRouter balance; Jev costs $0.042 per million input tokens, so a compaction
+of a 25k-token state is about $0.001.
+
+Then add this repository as a plugin marketplace and install the plugin,
+either from the shell or as slash commands inside a session:
 
 ```sh
-npm install fast-jev-compaction
-export TYPESAFE_API_KEY=...
+claude plugin marketplace add denisded/claude-compact-openrouter
+claude plugin install claude-compact-openrouter@claude-compact-openrouter
+```
+
+The install prompts for the plugin options (API key, thresholds, `truncateHeadChars`,
+…); leave them at their defaults to use `OPENROUTER_API_KEY` from the environment.
+Restart Claude Code or run `/reload-plugins`. From then on `/compact` (and
+auto-compaction) goes through Jev: the toast reads
+`claude-compact-openrouter: kept N/M messages, no summary (…)` when the pruned
+history replaced the built-in summary, or `fallback to built-in summary (…)`
+when Jev could not remove enough (short sessions, or when it fails).
+
+To run from a checkout without installing: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir .`
+from the repository root. No publishing step is required; the marketplace is
+just the repo's `.claude-plugin/marketplace.json`.
+
+See [`hooks/README.md`](hooks/README.md) for the hook's configuration and the
+Claude Code type reference it is built against.
+
+## Library usage
+
+```sh
+npm install claude-compact-openrouter
+export OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
 ```ts
-import { compactMessages, reductionRatio, type Message } from 'fast-jev-compaction';
+import { compactMessages, reductionRatio, type Message } from 'claude-compact-openrouter';
 
 const transcript: Message[] = [
   { role: 'user', text: 'Fix the failing test. Never edit src/generated.', toolUses: [] },
@@ -93,16 +143,16 @@ method) and call `compact(messages, asker, options)`; `buildJevRequest` and
 The building blocks (`collectToolCalls`, `fitState`, `batchCalls`,
 `decideCall`, `applyDecisions`) are exported too.
 
-`apiKey` defaults to `process.env.TYPESAFE_API_KEY`. Never commit the key or
+`apiKey` defaults to `process.env.OPENROUTER_API_KEY`. Never commit the key or
 put it in a source file.
 
 ## Options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `apiKey` | `TYPESAFE_API_KEY` | TypeSafe API key (`compactMessages`/`JevClient`) |
-| `model` | `jev-latest` | Jev model name |
-| `baseUrl` | `https://api.typesafe.ai/v1/systemone` | System One endpoint |
+| `apiKey` | `OPENROUTER_API_KEY` | OpenRouter API key (`compactMessages`/`JevClient`) |
+| `model` | `~typesafe/jev-latest` | Jev model id on OpenRouter (`typesafe/jev-1.13` pins a version) |
+| `baseUrl` | `https://openrouter.ai/api/alpha/decisions` | Decisions endpoint |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
@@ -124,43 +174,8 @@ stage was needed, and the number of requests.
   result is safe to delete. The assistant can always re-run the tool.
 - The full state is repeated with every request, so a history near the state
   ceiling costs one request per handful of questions.
-
-## Claude Code plugin
-
-The repository root is a Claude Code function-hook plugin: `hooks/fast-jev.ts`
-is a thin adapter that feeds `session.compact` transcripts through `src/` and
-falls back to Claude Code's built-in summary on errors or insufficient
-reduction. See [`hooks/README.md`](hooks/README.md) for configuration and the
-Claude Code 2.1.274 type reference.
-
-### Install in Claude Code
-
-Function hooks are an early-access Claude Code feature (2.1.274+), so the
-opt-in flag must be set wherever Claude Code runs, e.g. in `~/.claude/settings.json`:
-
-```json
-{ "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1", "TYPESAFE_API_KEY": "<your key>" } }
-```
-
-Then add this repository as a plugin marketplace and install the plugin,
-either from the shell or as slash commands inside a session:
-
-```sh
-claude plugin marketplace add tamaratran/fast-jev-compaction
-claude plugin install fast-jev-compaction@fast-jev-compaction
-```
-
-The install prompts for the plugin options (API key, thresholds, `truncateHeadChars`,
-…); leave them at their defaults to use `TYPESAFE_API_KEY` from the environment.
-Restart Claude Code or run `/reload-plugins`. From then on `/compact` (and
-auto-compaction) goes through Jev: the toast reads
-`fast-jev-compaction: kept N/M messages, no summary (…)` when the pruned history
-replaced the built-in summary, or `fallback to built-in summary (…)` when Jev
-could not remove enough (short sessions, or when it fails).
-
-To run from a checkout without installing: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude --plugin-dir .`
-from the repository root. No publishing step is required; the marketplace is
-just the repo's `.claude-plugin/marketplace.json`.
+- OpenRouter's decisions endpoint is in alpha (`/api/alpha/decisions`); if its
+  path changes, set `baseUrl`.
 
 ## Development
 
@@ -170,22 +185,25 @@ npm run typecheck        # library + hook
 npm test
 npm run build
 npm run validate:plugin  # claude plugin validate
-TYPESAFE_API_KEY="$(cat ~/.typesafe_key)" npm run demo
+OPENROUTER_API_KEY=sk-or-v1-... npm run demo
 ```
 
-The unit tests use a fake Jev and never contact TypeSafe. The demo is the live
-network check.
+The unit tests use a fake Jev and never contact OpenRouter. The demo is the
+live network check.
 
 ## Animated demo (macOS)
 
-`demo/JevDemo` is a small native SwiftUI app that plays a scripted, dramatized
-version of the compaction flow inside a Claude Code-style terminal: the tool
-calls of a canned transcript are scored, results and calls Jev lets go turn red
-and collapse away, and the rest stays verbatim. It never calls the API; it
-exists to be screen recorded.
+`demo/JevDemo` is a small native SwiftUI app inherited from the original
+project that plays a scripted, dramatized version of the compaction flow. It
+never calls the API.
 
 ```sh
 demo/JevDemo/build.sh   # builds demo/JevDemo/build/JevDemo.app and launches it
 ```
 
-Press space in the app to replay from the start.
+## Credits
+
+The compaction model, state fitting and Claude Code adapter are the work of
+[tamaratran/fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction).
+Jev is a [TypeSafe](https://typesafe.ai) System One model. MIT license, see
+[LICENSE](LICENSE).
