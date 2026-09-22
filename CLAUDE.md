@@ -9,15 +9,19 @@
 Форк `tamaratran/fast-jev-compaction` (MIT); от оригинала отличается только
 транспортом и именем — логику скоринга не трогать без причины.
 
-Настройки плагина (`userConfig`) редактируются в `/plugin` → плагин →
-«Configure options» или в `pluginConfigs` в `~/.claude/settings.json`; Claude
-Desktop показывает только описание (function-hook-модули не входят в его
-инвентарь). Хук регистрирует команду `/jev`: показывает все опции и статус
-ключей; менять через `$.config.set` умеет только там, где движок отдаёт строки
-`/config` для плагина (в headless 2.1.278 их нет).
+Настройки плагина (`userConfig`) хранятся в `pluginConfigs` в
+`~/.claude/settings.json`. Три команды: `/jev-settings` и `/jev-set <опция>
+<значение>` — markdown-команды в `commands/`, запускают `scripts/jev-config.mjs`
+(показ / запись settings.json); их Claude Desktop показывает на вкладке
+«Commands». `/jev` — команда из function-hook-модуля: показывает то, что
+движок реально загрузил; менять через `$.config.set` умеет только там, где
+движок отдаёт строки `/config` плагина (в 2.1.278 их нет). Function-hook-модули
+Desktop в инвентарь не включает, а редактора `userConfig` у него нет.
 
-Ограничения валидатора (`claude plugin validate`): имя в `$.env.get(...)` —
-литерал; `$` можно передавать только в функции верхнего уровня файла.
+Подводные камни: в inline-bash markdown-команд работает `$ARGUMENTS`, а `$1`/`$2`
+ломают команду молча; ненулевой код выхода inline-команды глотает вывод.
+Валидатор (`claude plugin validate`): имя в `$.env.get(...)` — литерал; `$`
+можно передавать только в функции верхнего уровня файла.
 
 ## Структура
 
@@ -28,6 +32,8 @@ Desktop показывает только описание (function-hook-мод
   `turn.complete`. Работает в песочнике движка: сеть только через `$.http.fetch`,
   ключ — из опции `apiKey`/`typesafeApiKey`, `$.env.get` переменной провайдера
   или `env` в settings.
+- `commands/*.md` + `scripts/jev-config.mjs` — команды `/jev-settings`,
+  `/jev-set`; скрипт без зависимостей, тест — `tests/jev-config.test.ts`.
 - `.claude-plugin/plugin.json` — манифест и `userConfig`; `marketplace.json` —
   маркетплейс из этого же репозитория.
 - `types/claude-code.d.ts` — сгенерированные типы function hooks (Claude Code

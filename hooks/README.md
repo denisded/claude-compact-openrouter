@@ -68,10 +68,17 @@ from `OPENROUTER_API_KEY` / `TYPESAFE_API_KEY` (the process environment or the
 recommended setup. The hook registers `/jev` at `session.start`: bare, it
 prints the effective provider, endpoint, model, key availability and every
 option; `/jev <option> <value>` sets one through `$.config.set` where the host
-lists the plugin's fields as `/config` rows, and otherwise points to `/plugin`
-→ Configure options or `pluginConfigs` in `~/.claude/settings.json`. Options
-are re-read from the `/config` rows on every compaction, so a change applies
-without a reload.
+lists the plugin's fields as `/config` rows, and otherwise points to
+`/jev-set`. Options are re-read from the `/config` rows on every compaction,
+so a change applies without a reload.
+
+`commands/jev-settings.md` and `commands/jev-set.md` are ordinary plugin
+commands (the ones Claude Desktop lists) that run `scripts/jev-config.mjs`
+inline: `show` prints the stored options and defaults, `set <option> [value]`
+validates the value against the manifest and writes `pluginConfigs` in the
+user's settings.json (sensitive fields are refused). The script always exits
+0 and prints the error instead, because a failing inline command drops the
+command's output.
 
 Every option except `provider`, the keys, `compactAtPercent`,
 `minReductionRatio` and `model` is passed straight to the library; see the

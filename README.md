@@ -96,13 +96,21 @@ The install prompts for the plugin options (provider, API keys, thresholds,
 `truncateHeadChars`, …); leave them at their defaults to use OpenRouter with
 `OPENROUTER_API_KEY` from the environment. Restart Claude Code or run `/reload-plugins`.
 
-`/jev` in any session prints the effective setup (provider, endpoint, model,
-which key is available) and every option. To change one, open `/plugin`,
-pick the plugin and choose **Configure options**; where Claude Code lists the
-plugin's fields as `/config` rows, `/jev provider typesafe` (or
-`/jev <option> <value>`) sets it directly. The values are stored in
-`~/.claude/settings.json`, which can also be edited directly and is re-read
-without a restart:
+Three slash commands manage the options from inside a session:
+
+| Command | What it does |
+| --- | --- |
+| `/jev-settings` | Prints every option with its value and source, the resolved provider, endpoint and model, and whether each API key is available |
+| `/jev-set <option> <value>` | Changes one option in `~/.claude/settings.json`, e.g. `/jev-set provider typesafe`, `/jev-set compactAtPercent 70`; `/jev-set model` clears the model back to the provider's default |
+| `/jev` | The same view straight from the running hook (what the engine actually loaded) |
+
+`/jev-settings` and `/jev-set` are plugin commands, so the Claude Desktop
+plugin page lists them under **Commands**; type the short name or the full
+`/claude-compact-openrouter:jev-set`. They run `scripts/jev-config.mjs` with
+Node and touch only `pluginConfigs` in settings.json, never the keys. `/plugin`
+→ the plugin → **Configure options** is the built-in alternative. Claude Code
+re-reads `pluginConfigs` when settings.json changes, so no restart is needed.
+The stored shape, if you prefer to edit the file yourself:
 
 ```json
 {
@@ -116,9 +124,7 @@ without a restart:
 
 The two API keys are `sensitive`, so they are asked for at install time and
 kept out of `settings.json`; the environment variables (`OPENROUTER_API_KEY`,
-`TYPESAFE_API_KEY`) are the easier way to supply them. The Claude Desktop
-plugin page shows only the description (function-hook modules are not part
-of its component inventory), so use `/jev`, `/plugin` or the file. From then on `/compact` (and
+`TYPESAFE_API_KEY`) are the easier way to supply them. From then on `/compact` (and
 auto-compaction) goes through Jev: the toast reads
 `claude-compact-openrouter: kept N/M messages, no summary (…)` when the pruned
 history replaced the built-in summary, or `fallback to built-in summary (…)`

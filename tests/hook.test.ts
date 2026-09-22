@@ -162,7 +162,7 @@ describe('/jev command', () => {
     ]);
     const text = formatConfigReport(resolveHookConfig(options), entries, { openrouter: false, typesafe: true }, false);
     expect(text).not.toContain('secret');
-    expect(text.split('\n').at(-1)).toMatch(/^Change them in \/plugin/);
+    expect(text.split('\n').at(-1)).toMatch(/^Change one with \/jev-set /);
   });
 });
 

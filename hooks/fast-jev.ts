@@ -135,7 +135,7 @@ export function formatConfigReport(
     '',
     canSet
       ? `Change one with /${COMMAND_NAME} <option> <value>, e.g. /${COMMAND_NAME} provider typesafe`
-      : `Change them in /plugin → ${PLUGIN_NAME} → Configure options, or under pluginConfigs in ~/.claude/settings.json; both apply without a restart.`,
+      : `Change one with /jev-set <option> <value> (e.g. /jev-set provider typesafe), in /plugin → ${PLUGIN_NAME} → Configure options, or under pluginConfigs in ~/.claude/settings.json; all apply without a restart.`,
   );
   return lines.join('\n');
 }

@@ -1,6 +1,6 @@
 {
   "name": "claude-compact-openrouter",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Verbatim Jev-guided compaction for Claude Code sessions, with Jev served through OpenRouter or TypeSafe's own API.",
   "license": "MIT",
   "userConfig": {
