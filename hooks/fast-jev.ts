@@ -1,4 +1,5 @@
 import type {
+  ConfigRow,
   On,
   PluginOptions,
   Register,
@@ -30,6 +31,114 @@ const HOOK_DEFAULTS = {
   compactAtPercent: 60,
   minReductionRatio: 0.25,
 };
+
+/** The manifest's name: `/config` rows for the plugin's `userConfig` are keyed `<name>.<field>`. */
+export const PLUGIN_NAME = 'claude-compact-openrouter';
+export const COMMAND_NAME = 'jev';
+
+function rowField(row: ConfigRow): string | undefined {
+  return row.key.startsWith(`${PLUGIN_NAME}.`) ? row.key.slice(PLUGIN_NAME.length + 1) : undefined;
+}
+
+/** Load-time options overlaid with the live `/config` rows, so a change applies without a reload. */
+export function liveOptions(options: PluginOptions, rows: readonly ConfigRow[]): PluginOptions {
+  const live: Record<string, PluginOptions[string]> = { ...options };
+  for (const row of rows) {
+    const field = rowField(row);
+    if (field) live[field] = row.value;
+  }
+  return live;
+}
+
+export type SetArgs = { key: string; value: ConfigRow['value'] } | { error: string };
+
+/** Turns `/jev <option> <value>` into a `$.config.set` call, held to the row's kind. */
+export function parseSetArgs(args: string, rows: readonly ConfigRow[]): SetArgs {
+  const [field = '', ...rest] = args.trim().split(/\s+/);
+  const raw = rest.join(' ');
+  const row = rows.find((r) => rowField(r) === field);
+  if (!row) {
+    const fields = rows.map(rowField).filter(Boolean).join(', ');
+    return { error: `Unknown option "${field}". Options: ${fields}` };
+  }
+  switch (row.kind) {
+    case 'number': {
+      const value = Number(raw);
+      if (raw === '' || !Number.isFinite(value)) return { error: `${field} takes a number` };
+      return { key: row.key, value };
+    }
+    case 'boolean':
+      if (raw !== 'true' && raw !== 'false') return { error: `${field} takes true or false` };
+      return { key: row.key, value: raw === 'true' };
+    case 'choice':
+      if (!row.options?.includes(raw)) {
+        return { error: `${field} takes one of: ${row.options?.join(', ') ?? ''}` };
+      }
+      return { key: row.key, value: raw };
+    default:
+      return { key: row.key, value: raw };
+  }
+}
+
+/** The manifest's non-sensitive fields, in display order, for when `/config` lists no plugin rows. */
+const OPTION_FIELDS = [
+  'provider',
+  'model',
+  'keepThreshold',
+  'preserveRecentMessages',
+  'compactAtPercent',
+  'minReductionRatio',
+  'maxStateTokens',
+  'maxRequestTokens',
+  'truncateHeadChars',
+] as const;
+
+export type OptionEntry = { field: string; value: unknown; choices?: readonly string[]; locked?: boolean };
+
+/** What `/jev` lists: the plugin's `/config` rows, or the loaded options when the host lists none. */
+export function optionEntries(options: PluginOptions, rows: readonly ConfigRow[]): OptionEntry[] {
+  const fromRows: OptionEntry[] = [];
+  for (const row of rows) {
+    const field = rowField(row);
+    if (!field) continue;
+    const entry: OptionEntry = { field, value: row.value };
+    if (row.options) entry.choices = row.options;
+    if (row.isLocked) entry.locked = true;
+    fromRows.push(entry);
+  }
+  if (fromRows.length > 0) return fromRows;
+  return OPTION_FIELDS.map((field) => ({ field, value: options[field] ?? '' }));
+}
+
+/** The `/jev` output: the resolved setup, every option and how to change one. */
+export function formatConfigReport(
+  config: HookConfig,
+  entries: readonly OptionEntry[],
+  keys: Record<JevProvider, boolean>,
+  canSet: boolean,
+): string {
+  const provider = PROVIDERS[config.provider];
+  const lines = [
+    `${PLUGIN_NAME}: provider ${config.provider} (${provider.url}), model ${config.model}`,
+    (Object.keys(PROVIDERS) as JevProvider[])
+      .map((p) => `${PROVIDERS[p].envKey}: ${keys[p] ? 'set' : 'unset'}`)
+      .join(', '),
+    '',
+  ];
+  const width = Math.max(...entries.map((e) => e.field.length), 0);
+  for (const entry of entries) {
+    const choices = entry.choices ? `  [${entry.choices.join(' | ')}]` : '';
+    const lock = entry.locked ? '  (locked)' : '';
+    lines.push(`  ${entry.field.padEnd(width)}  ${String(entry.value)}${choices}${lock}`);
+  }
+  lines.push(
+    '',
+    canSet
+      ? `Change one with /${COMMAND_NAME} <option> <value>, e.g. /${COMMAND_NAME} provider typesafe`
+      : `Change them in /plugin → ${PLUGIN_NAME} → Configure options, or under pluginConfigs in ~/.claude/settings.json; both apply without a restart.`,
+  );
+  return lines.join('\n');
+}
 
 export type HookFetchInit = {
   method?: string;
@@ -279,12 +388,63 @@ function notify(
   $.ui.toast(text, { timeoutMs: 15_000 });
 }
 
+/** Whether a key is reachable for each provider, without revealing any. */
+async function keyStatus(
+  $: Parameters<typeof getApiKey>[0],
+  options: PluginOptions,
+  rows: readonly ConfigRow[],
+): Promise<Record<JevProvider, boolean>> {
+  const keys: Record<JevProvider, boolean> = { openrouter: false, typesafe: false };
+  for (const provider of Object.keys(keys) as JevProvider[]) {
+    const probe = resolveHookConfig({ ...liveOptions(options, rows), provider });
+    keys[provider] = Boolean(await getApiKey($, probe));
+  }
+  return keys;
+}
+
+// Re-read the `/config` rows on every use so `/jev` and `/config` changes apply at once.
+async function currentConfig(
+  $: { config: { list: () => Promise<ConfigRow[]> } },
+  options: PluginOptions,
+): Promise<{ rows: ConfigRow[]; config: HookConfig }> {
+  const rows = await $.config.list();
+  return { rows, config: resolveHookConfig(liveOptions(options, rows)) };
+}
+
 export const register: Register = (on: On, options: PluginOptions) => {
-  const configured = resolveHookConfig(options);
   let compacting = false;
+
+  on('session.start', async ($, event, next) => {
+    await $.command.register({
+      name: COMMAND_NAME,
+      description: 'Show or change the Jev compaction settings (provider, model, thresholds).',
+      argumentHint: '[option value]',
+    });
+    return next(event);
+  });
+
+  on('command.run', { command: COMMAND_NAME }, async ($, event) => {
+    let { rows, config } = await currentConfig($, options);
+    const canSet = rows.some((row) => rowField(row) !== undefined);
+    if (event.args.trim()) {
+      if (!canSet) {
+        return {
+          text: `This Claude Code lists no /config rows for the plugin, so /${COMMAND_NAME} cannot change options here. ${formatConfigReport(config, optionEntries(options, rows), await keyStatus($, options, rows), false).split('\n').at(-1)}`,
+        };
+      }
+      const parsed = parseSetArgs(event.args, rows);
+      if ('error' in parsed) return { text: parsed.error };
+      const outcome = await $.config.set({ key: parsed.key, value: parsed.value });
+      if ('deny' in outcome && outcome.deny) return { text: `${parsed.key}: ${outcome.deny}` };
+      ({ rows, config } = await currentConfig($, options));
+    }
+    const keys = await keyStatus($, options, rows);
+    return { text: formatConfigReport(config, optionEntries(options, rows), keys, canSet) };
+  });
 
   on('session.compact', async ($, event, next) => {
     try {
+      const { config: configured } = await currentConfig($, options);
       const config = { ...configured, apiKey: await getApiKey($, configured) };
       const { result, messages } = await compactSession(event.messages, config, async (url, init) => {
         const response = await $.http.fetch(url, init);
@@ -316,7 +476,8 @@ export const register: Register = (on: On, options: PluginOptions) => {
     if (compacting) return next(event);
     try {
       const { context } = await $.session.usage();
-      if ((context.percent ?? 0) < configured.compactAtPercent) return next(event);
+      const { config } = await currentConfig($, options);
+      if ((context.percent ?? 0) < config.compactAtPercent) return next(event);
       compacting = true;
       await $.session.compact();
     } catch (error) {

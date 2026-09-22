@@ -65,8 +65,13 @@ The plugin declares these `userConfig` values in
 sensitive option (`apiKey` for OpenRouter, `typesafeApiKey` for TypeSafe) or
 from `OPENROUTER_API_KEY` / `TYPESAFE_API_KEY` (the process environment or the
 `env` block of `~/.claude/settings.json`). The environment variable is the
-recommended setup. Non-sensitive options are editable in `/config` and stored
-under `pluginConfigs` in `~/.claude/settings.json`.
+recommended setup. The hook registers `/jev` at `session.start`: bare, it
+prints the effective provider, endpoint, model, key availability and every
+option; `/jev <option> <value>` sets one through `$.config.set` where the host
+lists the plugin's fields as `/config` rows, and otherwise points to `/plugin`
+→ Configure options or `pluginConfigs` in `~/.claude/settings.json`. Options
+are re-read from the `/config` rows on every compaction, so a change applies
+without a reload.
 
 Every option except `provider`, the keys, `compactAtPercent`,
 `minReductionRatio` and `model` is passed straight to the library; see the

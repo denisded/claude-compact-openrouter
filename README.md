@@ -96,10 +96,13 @@ The install prompts for the plugin options (provider, API keys, thresholds,
 `truncateHeadChars`, …); leave them at their defaults to use OpenRouter with
 `OPENROUTER_API_KEY` from the environment. Restart Claude Code or run `/reload-plugins`.
 
-To change the options later, open `/config` in an interactive `claude`
-session: every non-sensitive option is a row there, `provider` is a picker
-between `openrouter` and `typesafe`. The values are stored in
-`~/.claude/settings.json`, which can also be edited directly:
+`/jev` in any session prints the effective setup (provider, endpoint, model,
+which key is available) and every option. To change one, open `/plugin`,
+pick the plugin and choose **Configure options**; where Claude Code lists the
+plugin's fields as `/config` rows, `/jev provider typesafe` (or
+`/jev <option> <value>`) sets it directly. The values are stored in
+`~/.claude/settings.json`, which can also be edited directly and is re-read
+without a restart:
 
 ```json
 {
@@ -114,8 +117,8 @@ between `openrouter` and `typesafe`. The values are stored in
 The two API keys are `sensitive`, so they are asked for at install time and
 kept out of `settings.json`; the environment variables (`OPENROUTER_API_KEY`,
 `TYPESAFE_API_KEY`) are the easier way to supply them. The Claude Desktop
-plugin page only lists the options under "Also in this package" and has no
-editor for them, so use `/config` or the file. From then on `/compact` (and
+plugin page shows only the description (function-hook modules are not part
+of its component inventory), so use `/jev`, `/plugin` or the file. From then on `/compact` (and
 auto-compaction) goes through Jev: the toast reads
 `claude-compact-openrouter: kept N/M messages, no summary (…)` when the pruned
 history replaced the built-in summary, or `fallback to built-in summary (…)`

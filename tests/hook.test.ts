@@ -1,8 +1,13 @@
+import type { ConfigRow } from 'claude-code';
 import { describe, expect, it } from 'vitest';
 import {
   compactSession,
   decisionLog,
   decisionLogLines,
+  formatConfigReport,
+  liveOptions,
+  optionEntries,
+  parseSetArgs,
   resolveHookConfig,
   summarize,
   toSessionMessages,
@@ -82,6 +87,82 @@ describe('hook config', () => {
       model: 'jev-latest',
     });
     expect(resolveHookConfig({ provider: 'nope' }).provider).toBe('openrouter');
+  });
+});
+
+function row(field: string, kind: ConfigRow['kind'], value: ConfigRow['value'], options?: string[]): ConfigRow {
+  return {
+    key: `claude-compact-openrouter.${field}`,
+    label: field,
+    kind,
+    value,
+    ...(options ? { options } : {}),
+    provider: { kind: 'plugin', name: 'claude-compact-openrouter' },
+    isLocked: false,
+  };
+}
+
+const rows = [
+  row('provider', 'choice', 'openrouter', ['openrouter', 'typesafe']),
+  row('compactAtPercent', 'number', 60),
+  row('model', 'text', ''),
+  { ...row('theme', 'text', 'dark'), key: 'theme', provider: { kind: 'engine', tier: 'core' } } as ConfigRow,
+];
+
+describe('/jev command', () => {
+  it('overlays live /config rows on the load-time options', () => {
+    const live = liveOptions({ provider: 'openrouter', compactAtPercent: 60, apiKey: 'k' }, [
+      row('provider', 'choice', 'typesafe'),
+      row('compactAtPercent', 'number', 70),
+    ]);
+    expect(live).toEqual({ provider: 'typesafe', compactAtPercent: 70, apiKey: 'k' });
+    expect(resolveHookConfig(live).model).toBe('jev-latest');
+  });
+
+  it('parses a set call held to the row kind', () => {
+    expect(parseSetArgs('provider typesafe', rows)).toEqual({ key: 'claude-compact-openrouter.provider', value: 'typesafe' });
+    expect(parseSetArgs('provider nope', rows)).toEqual({ error: 'provider takes one of: openrouter, typesafe' });
+    expect(parseSetArgs('compactAtPercent 75', rows)).toEqual({ key: 'claude-compact-openrouter.compactAtPercent', value: 75 });
+    expect(parseSetArgs('compactAtPercent x', rows)).toEqual({ error: 'compactAtPercent takes a number' });
+    expect(parseSetArgs('model', rows)).toEqual({ key: 'claude-compact-openrouter.model', value: '' });
+    expect(parseSetArgs('theme dark', rows)).toEqual({
+      error: 'Unknown option "theme". Options: provider, compactAtPercent, model',
+    });
+  });
+
+  it('reports the resolved setup and every plugin row', () => {
+    const entries = optionEntries({}, rows);
+    expect(entries.map((e) => e.field)).toEqual(['provider', 'compactAtPercent', 'model']);
+    const text = formatConfigReport(resolveHookConfig({}), entries, { openrouter: true, typesafe: false }, true);
+    expect(text.split('\n')).toEqual([
+      'claude-compact-openrouter: provider openrouter (https://openrouter.ai/api/alpha/decisions), model ~typesafe/jev-latest',
+      'OPENROUTER_API_KEY: set, TYPESAFE_API_KEY: unset',
+      '',
+      '  provider          openrouter  [openrouter | typesafe]',
+      '  compactAtPercent  60',
+      '  model             ',
+      '',
+      'Change one with /jev <option> <value>, e.g. /jev provider typesafe',
+    ]);
+  });
+
+  it('falls back to the loaded options when the host lists no plugin rows', () => {
+    const options = { provider: 'typesafe', compactAtPercent: 70, apiKey: 'secret' };
+    const entries = optionEntries(options, [rows[3]!]);
+    expect(entries.map((e) => `${e.field}=${String(e.value)}`)).toEqual([
+      'provider=typesafe',
+      'model=',
+      'keepThreshold=',
+      'preserveRecentMessages=',
+      'compactAtPercent=70',
+      'minReductionRatio=',
+      'maxStateTokens=',
+      'maxRequestTokens=',
+      'truncateHeadChars=',
+    ]);
+    const text = formatConfigReport(resolveHookConfig(options), entries, { openrouter: false, typesafe: true }, false);
+    expect(text).not.toContain('secret');
+    expect(text.split('\n').at(-1)).toMatch(/^Change them in \/plugin/);
   });
 });
 
