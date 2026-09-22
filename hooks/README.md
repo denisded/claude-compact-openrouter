@@ -49,6 +49,9 @@ The plugin declares these `userConfig` values in
 
 | Option | Default |
 | --- | ---: |
+| `provider` | `openrouter` (or `typesafe`) |
+| `apiKey` | unset (OpenRouter key, sensitive) |
+| `typesafeApiKey` | unset (TypeSafe key, sensitive) |
 | `keepThreshold` | `0.5` |
 | `preserveRecentMessages` | `6` |
 | `compactAtPercent` | `60` |
@@ -56,16 +59,18 @@ The plugin declares these `userConfig` values in
 | `maxStateTokens` | `25000` |
 | `maxRequestTokens` | `30000` |
 | `truncateHeadChars` | `300` |
-| `model` | `~typesafe/jev-latest` |
+| `model` | provider's: `~typesafe/jev-latest` on OpenRouter, `jev-latest` at TypeSafe |
 
-The OpenRouter key can be supplied as the sensitive `apiKey` plugin option or
-through `OPENROUTER_API_KEY` (from the process environment or the `env` block
-of `~/.claude/settings.json`). The environment variable is the recommended
-setup.
+`provider` picks the decisions endpoint. The key for it comes from the matching
+sensitive option (`apiKey` for OpenRouter, `typesafeApiKey` for TypeSafe) or
+from `OPENROUTER_API_KEY` / `TYPESAFE_API_KEY` (the process environment or the
+`env` block of `~/.claude/settings.json`). The environment variable is the
+recommended setup. Non-sensitive options are editable in `/config` and stored
+under `pluginConfigs` in `~/.claude/settings.json`.
 
-Every option except `apiKey`, `compactAtPercent`, `minReductionRatio` and
-`model` is passed straight to the library; see the root README for what they
-do. The `session.compact` hook runs the Jev requests concurrently. If Jev fails,
+Every option except `provider`, the keys, `compactAtPercent`,
+`minReductionRatio` and `model` is passed straight to the library; see the
+root README for what they do. The `session.compact` hook runs the Jev requests concurrently. If Jev fails,
 the response is malformed, the key is unavailable, the history cannot be
 fitted into the state budget, or the estimated reduction is below
 `minReductionRatio`, the hook logs a fallback and delegates to Claude Code's

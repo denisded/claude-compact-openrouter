@@ -403,6 +403,14 @@ describe('HTTP client', () => {
     });
   });
 
+  it('builds a TypeSafe System One request when the provider is typesafe', () => {
+    const request = buildJevRequest({ apiKey: 'k', provider: 'typesafe' }, { a: 1 }, {});
+    expect(request.url).toBe('https://api.typesafe.ai/v1/systemone');
+    expect(JSON.parse(request.body).model).toBe('jev-latest');
+    const pinned = buildJevRequest({ apiKey: 'k', provider: 'typesafe', model: 'jev-1.13' }, {}, {});
+    expect(JSON.parse(pinned.body).model).toBe('jev-1.13');
+  });
+
   it('rejects failed and malformed responses', () => {
     expect(() => parseJevResponse(500, false, 'boom')).toThrow(/500/);
     expect(() => parseJevResponse(200, true, 'not json')).toThrow(/malformed/);

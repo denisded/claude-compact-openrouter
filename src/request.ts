@@ -1,7 +1,28 @@
 import type { JevAnswer, JevQuestions, JevResponse, JevState } from './types.js';
 
-export const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
-export const DEFAULT_MODEL = '~typesafe/jev-latest';
+export type JevProvider = 'openrouter' | 'typesafe';
+
+/** Where Jev is served from: the decisions endpoint, the model id there and the key's env var. */
+export const PROVIDERS: Record<JevProvider, { url: string; model: string; envKey: string }> = {
+  openrouter: {
+    url: 'https://openrouter.ai/api/alpha/decisions',
+    model: '~typesafe/jev-latest',
+    envKey: 'OPENROUTER_API_KEY',
+  },
+  typesafe: {
+    url: 'https://api.typesafe.ai/v1/systemone',
+    model: 'jev-latest',
+    envKey: 'TYPESAFE_API_KEY',
+  },
+};
+
+export const DEFAULT_PROVIDER: JevProvider = 'openrouter';
+export const DECISIONS_URL = PROVIDERS.openrouter.url;
+export const DEFAULT_MODEL = PROVIDERS.openrouter.model;
+
+export function isJevProvider(value: unknown): value is JevProvider {
+  return typeof value === 'string' && Object.hasOwn(PROVIDERS, value);
+}
 
 export interface JevRequest {
   url: string;
@@ -16,19 +37,21 @@ export function buildJevRequest(
     apiKey: string;
     model?: string;
     baseUrl?: string;
+    provider?: JevProvider;
   },
   state: JevState,
   questions: JevQuestions,
 ): JevRequest {
+  const provider = PROVIDERS[params.provider ?? DEFAULT_PROVIDER];
   return {
-    url: params.baseUrl ?? DECISIONS_URL,
+    url: params.baseUrl ?? provider.url,
     method: 'POST',
     headers: {
       authorization: `Bearer ${params.apiKey}`,
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: params.model ?? DEFAULT_MODEL,
+      model: params.model ?? provider.model,
       state,
       questions,
     }),

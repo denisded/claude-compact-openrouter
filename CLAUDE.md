@@ -1,11 +1,18 @@
 # CLAUDE.md
 
 Плагин Claude Code (function hooks) + npm-библиотека: заменяет встроенное
-саммари при компакции на решения модели Jev, которая вызывается через
-OpenRouter (`POST https://openrouter.ai/api/alpha/decisions`,
-модель `~typesafe/jev-latest`). Форк `tamaratran/fast-jev-compaction` (MIT);
-от оригинала отличается только транспортом и именем — логику скоринга не трогать
-без причины.
+саммари при компакции на решения модели Jev, которая по умолчанию вызывается
+через OpenRouter (`POST https://openrouter.ai/api/alpha/decisions`,
+модель `~typesafe/jev-latest`); опция `provider: typesafe` переключает на
+оригинальный API TypeSafe (`api.typesafe.ai/v1/systemone`, `jev-latest`,
+ключ `TYPESAFE_API_KEY`). Таблица провайдеров — `PROVIDERS` в `src/request.ts`.
+Форк `tamaratran/fast-jev-compaction` (MIT); от оригинала отличается только
+транспортом и именем — логику скоринга не трогать без причины.
+
+Настройки плагина (`userConfig`) редактируются в `/config` интерактивного
+`claude` или в `pluginConfigs` в `~/.claude/settings.json`; Claude Desktop их
+только перечисляет, редактора там нет. Имя переменной в `$.env.get(...)` должно
+быть литералом — иначе `claude plugin validate` отклонит модуль.
 
 ## Структура
 
@@ -14,7 +21,8 @@ OpenRouter (`POST https://openrouter.ai/api/alpha/decisions`,
   OpenRouter и разбор `answers`), `client.ts` (`JevClient` поверх `fetch`).
 - `hooks/fast-jev.ts` — адаптер к Claude Code: `session.compact` и
   `turn.complete`. Работает в песочнике движка: сеть только через `$.http.fetch`,
-  ключ — из опции `apiKey`, `$.env.get('OPENROUTER_API_KEY')` или `env` в settings.
+  ключ — из опции `apiKey`/`typesafeApiKey`, `$.env.get` переменной провайдера
+  или `env` в settings.
 - `.claude-plugin/plugin.json` — манифест и `userConfig`; `marketplace.json` —
   маркетплейс из этого же репозитория.
 - `types/claude-code.d.ts` — сгенерированные типы function hooks (Claude Code

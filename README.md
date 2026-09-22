@@ -6,9 +6,10 @@ one fast request, stale ones are dropped or truncated, everything kept stays
 verbatim. Also usable as an npm library.
 
 Fork of [tamaratran/fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction)
-(MIT). The only functional change is the transport: instead of TypeSafe's own
-API it calls OpenRouter's decisions endpoint, so a single `OPENROUTER_API_KEY`
-and an OpenRouter balance are all you need. No other model is involved — the
+(MIT). The only functional change is the transport: by default it calls
+OpenRouter's decisions endpoint, so a single `OPENROUTER_API_KEY` and an
+OpenRouter balance are all you need. The `provider` option switches back to
+TypeSafe's own API with `TYPESAFE_API_KEY`. No other model is involved — the
 compaction decisions are Jev's.
 
 ## Why OpenRouter
@@ -91,9 +92,30 @@ claude plugin marketplace add denisded/claude-compact-openrouter
 claude plugin install claude-compact-openrouter@claude-compact-openrouter
 ```
 
-The install prompts for the plugin options (API key, thresholds, `truncateHeadChars`,
-…); leave them at their defaults to use `OPENROUTER_API_KEY` from the environment.
-Restart Claude Code or run `/reload-plugins`. From then on `/compact` (and
+The install prompts for the plugin options (provider, API keys, thresholds,
+`truncateHeadChars`, …); leave them at their defaults to use OpenRouter with
+`OPENROUTER_API_KEY` from the environment. Restart Claude Code or run `/reload-plugins`.
+
+To change the options later, open `/config` in an interactive `claude`
+session: every non-sensitive option is a row there, `provider` is a picker
+between `openrouter` and `typesafe`. The values are stored in
+`~/.claude/settings.json`, which can also be edited directly:
+
+```json
+{
+  "pluginConfigs": {
+    "claude-compact-openrouter@claude-compact-openrouter": {
+      "options": { "provider": "typesafe", "compactAtPercent": 70 }
+    }
+  }
+}
+```
+
+The two API keys are `sensitive`, so they are asked for at install time and
+kept out of `settings.json`; the environment variables (`OPENROUTER_API_KEY`,
+`TYPESAFE_API_KEY`) are the easier way to supply them. The Claude Desktop
+plugin page only lists the options under "Also in this package" and has no
+editor for them, so use `/config` or the file. From then on `/compact` (and
 auto-compaction) goes through Jev: the toast reads
 `claude-compact-openrouter: kept N/M messages, no summary (…)` when the pruned
 history replaced the built-in summary, or `fallback to built-in summary (…)`
@@ -150,9 +172,10 @@ put it in a source file.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `apiKey` | `OPENROUTER_API_KEY` | OpenRouter API key (`compactMessages`/`JevClient`) |
-| `model` | `~typesafe/jev-latest` | Jev model id on OpenRouter (`typesafe/jev-1.13` pins a version) |
-| `baseUrl` | `https://openrouter.ai/api/alpha/decisions` | Decisions endpoint |
+| `provider` | `openrouter` | `openrouter` or `typesafe`: which decisions endpoint, default model and key env var to use |
+| `apiKey` | `OPENROUTER_API_KEY` / `TYPESAFE_API_KEY` | API key for the provider (`compactMessages`/`JevClient`) |
+| `model` | `~typesafe/jev-latest` / `jev-latest` | Jev model id at the provider (`typesafe/jev-1.13` on OpenRouter, `jev-1.13` at TypeSafe pin a version) |
+| `baseUrl` | provider's endpoint | `https://openrouter.ai/api/alpha/decisions` or `https://api.typesafe.ai/v1/systemone` |
 | `fetch` | native `fetch` | Injectable fetch implementation for tests |
 | `goal` | last 3 user prompts | Ongoing task description included in the state |
 | `keepThreshold` | `0.5` | Minimum keep probability for a call or result to stay |
